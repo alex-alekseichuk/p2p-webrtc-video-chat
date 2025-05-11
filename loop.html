@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple WebRTC Demo</title>
+</head>
+<body>
+<h1>WebRTC Loopback Example</h1>
+<video id="localVideo" autoplay muted playsinline></video>
+<video id="remoteVideo" autoplay playsinline></video>
+
+<script>
+/*
+    The browser grabs your webcam (getUserMedia).
+    Two peer connections are created (localPeer, remotePeer).
+    They exchange media and ICE candidates — all in the browser for this demo.
+    Video is sent from localPeer to remotePeer.
+*/
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+
+    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    const localPeer = new RTCPeerConnection(config);
+    const remotePeer = new RTCPeerConnection(config);
+
+    // ICE candidates exchange (loopback for demo)
+    localPeer.onicecandidate = e => {
+        if (e.candidate) remotePeer.addIceCandidate(e.candidate);
+    };
+    remotePeer.onicecandidate = e => {
+        if (e.candidate) localPeer.addIceCandidate(e.candidate);
+    };
+
+    // When remote gets a stream, show it
+    remotePeer.ontrack = e => {
+        remoteVideo.srcObject = e.streams[0];
+    };
+
+    // Get webcam
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(stream => {
+            localVideo.srcObject = stream;
+            stream.getTracks().forEach(track => localPeer.addTrack(track, stream));
+            return localPeer.createOffer();
+        })
+        .then(offer => {
+            return localPeer.setLocalDescription(offer).then(() => offer);
+        })
+        .then(offer => {
+            return remotePeer.setRemoteDescription(offer)
+                .then(() => remotePeer.createAnswer());
+        })
+        .then(answer => {
+            return remotePeer.setLocalDescription(answer).then(() => answer);
+        })
+        .then(answer => {
+            return localPeer.setRemoteDescription(answer);
+        })
+        .catch(err => console.error('Error:', err));
+</script>
+</body>
+</html>

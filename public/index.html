@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC with WebSocket</title>
+    <style>
+        html, body, main {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+        }
+        main {
+            display: grid;
+            place-content: center;
+            min-height: 100vh;
+        }
+        video {
+            margin: 0;
+        }
+        video.main {
+        }
+        video.self {
+            max-width: 10%;
+            position: absolute;
+            right: 0;
+            bottom: 0;
+        }
+    </style>
+</head>
+<body>
+<main></main>
+
+<script>
+    showMessage('Loading...');
+
+    let isSessionOn = false;
+    let stream = null;
+    let clients_num = 0;
+    const ws = new WebSocket('wss://' + String(location.host) + '/ws');
+    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    let localVideo;
+    let remoteVideo;
+    let pc;
+
+    // Handle incoming WebSocket messages
+    ws.onmessage = async (msg) => {
+        const msgData = msg.data.text === undefined ? msg.data : await msg.data.text();
+        const data = JSON.parse(msgData);
+
+        if (data.type === 'channel') {
+            clients_num = data.clients_num;
+            onJoinOrLeave();
+        }
+
+        if (data.type === 'join') {
+            clients_num++;
+            onJoinOrLeave();
+        }
+
+        if (data.type === 'leave') {
+            clients_num--;
+            if (clients_num < 0) {
+                clients_num = 0;
+            }
+            onJoinOrLeave();
+        }
+
+        if (data.type === 'offer') {
+            // Callee (on receiving offer):
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', answer }));
+        }
+
+        if (data.type === 'answer') {
+            // Caller (on receiving answer):
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+
+        if (data.type === 'candidate') {
+            // Exchange ICE Candidates
+            // On receiving a message of type ice-candidate:
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (err) {
+                console.error('Error adding ICE candidate:', err);
+            }
+        }
+    };
+
+    function onJoinOrLeave() {
+        if (clients_num === 2) {
+            startSession();
+        } else if (clients_num === 1) {
+            stopSession();
+        } else if (clients_num > 2) {
+            showMessage('The line is busy already. Sorry.');
+        }
+    }
+
+    function stopSession() {
+        showMessage('You are alone online. Wait another side to join the line...');
+
+        if (!isSessionOn) return;
+        isSessionOn = false;
+
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+    }
+
+    function startSession() {
+        if (isSessionOn) return;
+        isSessionOn = true;
+
+        const main = document.getElementsByTagName('main')[0];
+        main.innerHTML = `
+            <video id="remoteVideo" class="main" autoplay playsinline></video>
+            <video id="localVideo" class="self" autoplay muted playsinline></video>
+        `;
+
+        remoteVideo = document.getElementById('remoteVideo');
+        localVideo = document.getElementById('localVideo');
+
+        remoteVideo.addEventListener('loadedmetadata', () => {
+            if (remoteVideo.videoWidth / remoteVideo.videoHeight > window.innerWidth / window.innerHeight) {
+                remoteVideo.setAttribute('width', window.innerWidth);
+            } else {
+                remoteVideo.setAttribute('height', window.innerHeight);
+            }
+        });
+
+        // Create RTCPeerConnection and attach ICE handling
+        pc = new RTCPeerConnection(config);
+
+        // ICE candidate handling
+        // Sending ICE candidates to the remote peer.
+        pc.onicecandidate = e => {
+            if (e.candidate) {
+                ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+            }
+        };
+
+        // Handle remote stream
+        // Handling incoming video/audio.
+        pc.ontrack = (e) => {
+            remoteVideo.srcObject = e.streams[0];
+        };
+
+        // Get local media and prepare RTCPeerConnection
+        // You ask the user for webcam/mic, display it locally, and attach it to the WebRTC peer.
+        navigator.mediaDevices.getUserMedia({video: true, audio: true})
+            .then(async (_stream) => {
+                stream = _stream;
+                localVideo.srcObject = stream;
+                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+                // Wait briefly before creating offer to allow the other peer to connect
+                // setTimeout(async () => {
+                    // Negotiation (Offer/Answer)
+                    // Caller:
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    ws.send(JSON.stringify({type: 'offer', offer}));
+                // }, 1000);
+            })
+            .catch(console.error);
+    }
+
+    function showMessage(message) {
+        const main = document.getElementsByTagName('main')[0];
+        main.innerHTML = `<p class="message">${message}</p>`;
+    }
+</script>
+</body>
+</html>
