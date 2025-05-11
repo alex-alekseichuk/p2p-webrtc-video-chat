@@ -1,5 +1,5 @@
 # A WebRTC P2P video chat with:
-- 
+
 - WebSocket server for signaling (offer/answer/ICE).
 - Two clients connect and see each other's webcam.
 
