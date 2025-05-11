@@ -8,12 +8,12 @@ You are probably going to use your.own.com domain name.
 
 Add moon to /etc/hosts on both systems or use DNS.
 
-install dependencies:
+Install dependencies:
 ```
 npm i
 ```
 
-generate cert and key in cert/ subfolder:
+Generate cert and key in cert/ subfolder:
 ```
 openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365
 ```
@@ -21,12 +21,12 @@ openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 36
 Make sure the Common Name (CN) matches the domain you'll use it with.
 It's `moon` in our case.
 
-start signaling server:
+Start signaling server:
 ```
 node signaling-server.js
 ```
 
-open in the browser: https://moon:8080/
+Open in the browser: https://moon:8080/
 
 You need to open this page in browsers on 2 computers.
 The browser will ask you for permissions to use the camera and microphone.
