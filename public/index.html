@@ -34,6 +34,7 @@
     showMessage('Loading...');
 
     let isSessionOn = false;
+    let isMaster = false;
     let stream = null;
     let clients_num = 0;
     const ws = new WebSocket('wss://' + String(location.host) + '/ws');
@@ -50,12 +51,12 @@
 
         if (data.type === 'channel') {
             clients_num = data.clients_num;
-            onJoinOrLeave();
+            onJoinOrLeave(data.index === 0);
         }
 
         if (data.type === 'join') {
             clients_num++;
-            onJoinOrLeave();
+            onJoinOrLeave(data.index === 0);
         }
 
         if (data.type === 'leave') {
@@ -63,10 +64,14 @@
             if (clients_num < 0) {
                 clients_num = 0;
             }
-            onJoinOrLeave();
+            onJoinOrLeave(data.index === 0);
         }
 
         if (data.type === 'offer') {
+            if (isMaster) {
+                return;
+            }
+
             // Callee (on receiving offer):
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await pc.createAnswer();
@@ -75,6 +80,10 @@
         }
 
         if (data.type === 'answer') {
+            if (!isMaster) {
+                return;
+            }
+
             // Caller (on receiving answer):
             await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         }
@@ -90,9 +99,9 @@
         }
     };
 
-    function onJoinOrLeave() {
+    function onJoinOrLeave(_isMaster) {
         if (clients_num === 2) {
-            startSession();
+            startSession(_isMaster);
         } else if (clients_num === 1) {
             stopSession();
         } else if (clients_num > 2) {
@@ -112,9 +121,11 @@
         }
     }
 
-    function startSession() {
+    function startSession(_isMaster) {
         if (isSessionOn) return;
         isSessionOn = true;
+
+        isMaster = _isMaster;
 
         const main = document.getElementsByTagName('main')[0];
         main.innerHTML = `
@@ -152,20 +163,30 @@
 
         // Get local media and prepare RTCPeerConnection
         // You ask the user for webcam/mic, display it locally, and attach it to the WebRTC peer.
-        navigator.mediaDevices.getUserMedia({video: true, audio: true})
+        navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        })
             .then(async (_stream) => {
                 stream = _stream;
                 localVideo.srcObject = stream;
                 stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
+                if (!isMaster) {
+                    return;
+                }
+
                 // Wait briefly before creating offer to allow the other peer to connect
-                // setTimeout(async () => {
-                    // Negotiation (Offer/Answer)
+                setTimeout(async () => {
                     // Caller:
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
                     ws.send(JSON.stringify({type: 'offer', offer}));
-                // }, 1000);
+                }, 1000);
             })
             .catch(console.error);
     }

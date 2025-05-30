@@ -40,3 +40,4 @@ It's important to use HTTPS for camera and microphone availability.
 - ICE candidates (network info) are exchanged between peers to establish a direct connection.
 - Once WebRTC completes negotiation, video/audio streams flow directly P2P, bypassing the server.
 
+    

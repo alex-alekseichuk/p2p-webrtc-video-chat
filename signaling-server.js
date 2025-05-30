@@ -33,21 +33,25 @@ server.on('upgrade', (request, socket, head) => {
     }
 });
 
-const clients = new Set();
+// const clients = new Set();
+const clients = [];
 
 wss.on('connection', (ws) => {
-    clients.add(ws);
-    sendAllOther(JSON.stringify({type: 'join'}), ws);
-    ws.send(JSON.stringify({type: 'channel', clients_num: clients.size}));
+    clients.push(ws);
+    sendAllOther({type: 'join'}, ws);
+    ws.send(JSON.stringify({type: 'channel', clients_num: clients.length, index: clients.indexOf(ws)}));
 
     ws.on('message', (message) => {
         // Relay message to all other clients
-        sendAllOther(message, ws);
+        sendRawAllOther(message, ws);
     });
 
     ws.on('close', () => {
-        clients.delete(ws);
-        sendAllOther(JSON.stringify({type: 'leave'}), ws);
+        const i = clients.indexOf(ws);
+        if (i !== -1) {
+            clients.splice(i, 1);
+            sendAllOther({type: 'leave'}, ws);
+        }
     });
 });
 
@@ -59,12 +63,20 @@ server.listen(8080, '0.0.0.0', () => {
 function sendAll(message) {
     for (let client of clients) {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
+            client.send(JSON.stringify({...message, index: clients.indexOf(client)}));
         }
     }
 }
 
 function sendAllOther(message, ws) {
+    for (let client of clients) {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({...message, index: clients.indexOf(client)}));
+        }
+    }
+}
+
+function sendRawAllOther(message, ws) {
     for (let client of clients) {
         if (client !== ws && client.readyState === WebSocket.OPEN) {
             client.send(message);
